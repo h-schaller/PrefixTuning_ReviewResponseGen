@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
     logging_dir = os.path.join(folder_name, 'runs', Model_FILE)
     Model_FILE = '{}{}'.format(folder_name, Model_FILE)
-    print(Model_FILE)
+    print("Model_FILE", Model_FILE)
 
 
     OLD_MODEL = 'facebook/bart-large'
@@ -337,7 +337,7 @@ if __name__ == '__main__':
         print(COMMANDLINE, file=f)
 
 
-    print(COMMANDLINE)
+    print("COMMANDLINE", COMMANDLINE)
     if args.submit == 'no':
         os.system(COMMANDLINE) # textattack/roberta-base-ag-news # textattack/roberta-base-imdb
     # #

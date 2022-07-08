@@ -166,7 +166,7 @@ class PrefixTransformer(pl.LightningModule):
         else:
             assert False, "model_args.optim_prefix should be either yes or no"
 
-        print(self.model_type)
+        print("model_type", self.model_type)
         config_prefix._my_arg_tune_mode = self.hparams.tuning_mode
         config_prefix._my_arg_task_mode = self.hparams.task_mode
         config_prefix._my_arg_control = True

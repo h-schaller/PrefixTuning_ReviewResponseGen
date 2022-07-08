@@ -750,7 +750,7 @@ def main(args, model=None) -> SummarizationModule:
     # print(model)
     dataset = Path(args.data_dir).name
 
-    print(dataset)
+    print("dataset", dataset)
     if (
         args.logger_name == "default"
         or args.fast_dev_run
@@ -847,10 +847,12 @@ def eval(args, model=None) -> SummarizationModule:
         for preds in result['preds']:
             print(preds, file=f)
 
-    # print(result)
-    for k, v in result.items():
-        if k != 'preds':
-            print(k, v)
+    out_path_metrics = out_path + '_metrics.json'
+    with open(out_path_metrics, 'w') as f:
+        for k, v in result.items():
+            if k == 'log':
+                print(v, file=f)
+
     # final evaluation.
     # gold_dir = 'e2e/test_gold.target'
     # os.system("python /u/scr/xlisali/e2e-metrics/measure_scores.py "

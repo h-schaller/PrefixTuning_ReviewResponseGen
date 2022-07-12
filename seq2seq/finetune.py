@@ -373,7 +373,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         parser.add_argument("--max_tokens_per_batch", type=int, default=None)
         parser.add_argument("--logger_name", type=str, choices=["default", "wandb", "wandb_shared"], default="default")
         parser.add_argument("--n_train", type=int, default=-1, required=False, help="# examples. -1 means use all.")
-        parser.add_argument("--n_val", type=int, default=500, required=False, help="# examples. -1 means use all.")
+        parser.add_argument("--n_val", type=int, default=-1, required=False, help="# examples. -1 means use all.")
         parser.add_argument("--n_test", type=int, default=-1, required=False, help="# examples. -1 means use all.")
         parser.add_argument(
             "--task_mode", type=str, default="summarization", required=False, help="# examples. -1 means use all."
@@ -733,21 +733,17 @@ class TranslationModule(SummarizationModule):
 def main(args, model=None) -> SummarizationModule:
     Path(args.output_dir).mkdir(exist_ok=True)
     if len(os.listdir(args.output_dir)) > 3 and args.do_train:
-        print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
+        # print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
         
-        # raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if model is None:
-        if "summarization" in args.task_mode:
-            if args.tuning_mode == 'prefixtune':
-                model = PrefixSummarizationModule(args)
-            elif args.tuning_mode == 'finetune':
-                model: SummarizationModule = SummarizationModule(args)
-            else:
-                assert False, 'invalid tuning_mode'
+        if args.tuning_mode == 'prefixtune':
+            model = PrefixSummarizationModule(args)
+        elif args.tuning_mode == 'finetune':
+            model: SummarizationModule = SummarizationModule(args)
         else:
-            model: SummarizationModule = TranslationModule(args)
+            assert False, 'invalid tuning_mode'
 
-    # print(model)
     dataset = Path(args.data_dir).name
 
     print("dataset", dataset)
@@ -758,16 +754,16 @@ def main(args, model=None) -> SummarizationModule:
         or str(args.output_dir).startswith("/var")
     ):
         logger = True  # don't pollute wandb logs unnecessarily
-    elif args.logger_name == "wandb":
-        from pytorch_lightning.loggers import WandbLogger
-
-        project = os.environ.get("WANDB_PROJECT", dataset)
-        logger = WandbLogger(name=model.output_dir.name, project=project)
-
-    elif args.logger_name == "wandb_shared":
-        from pytorch_lightning.loggers import WandbLogger
-
-        logger = WandbLogger(name=model.output_dir.name, project=f"hf_{dataset}")
+    # elif args.logger_name == "wandb":
+    #     from pytorch_lightning.loggers import WandbLogger
+    #
+    #     project = os.environ.get("WANDB_PROJECT", dataset)
+    #     logger = WandbLogger(name=model.output_dir.name, project=project)
+    #
+    # elif args.logger_name == "wandb_shared":
+    #     from pytorch_lightning.loggers import WandbLogger
+    #
+    #     logger = WandbLogger(name=model.output_dir.name, project=f"hf_{dataset}")
 
     if args.early_stopping_patience >= 0:
         es_callback = get_early_stopping_callback(model.val_metric, args.early_stopping_patience)
@@ -779,7 +775,7 @@ def main(args, model=None) -> SummarizationModule:
         model,
         args,
         logging_callback=Seq2SeqLoggingCallback(),
-        checkpoint_callback=get_checkpoint_callback(args.output_dir, model.val_metric, args.save_top_k, lower_is_better), #LISA
+        checkpoint_callback=get_checkpoint_callback(args.output_dir, model.val_metric, args.save_top_k, lower_is_better),
         early_stopping_callback=es_callback,
         logger=logger,
     )
@@ -787,6 +783,7 @@ def main(args, model=None) -> SummarizationModule:
     if not args.do_predict:
         return model
 
+    # The following code never gets called (with args.do_train, there's never args.do_predict)
     model.hparams.test_checkpoint = ""
     checkpoints = list(sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True)))
     if checkpoints:
@@ -852,17 +849,6 @@ def eval(args, model=None) -> SummarizationModule:
         for k, v in result.items():
             if k == 'log':
                 print(v, file=f)
-
-    # final evaluation.
-    # gold_dir = 'e2e/test_gold.target'
-    # os.system("python /u/scr/xlisali/e2e-metrics/measure_scores.py "
-    #           "{} {} -p  -t -H ".format(gold_dir, out_path))
-
-    # out_file_eval = curr_dir + '_eval'
-    # print(out_file_eval, '\n', gold_dir, '\n', curr_dir)
-    # os.system("python /u/scr/xlisali/e2e-metrics/measure_scores.py "
-    #           "{} {} -p  -t -H >> {}".format(gold_dir, curr_dir, out_file_eval))
-
 
 
 if __name__ == "__main__":

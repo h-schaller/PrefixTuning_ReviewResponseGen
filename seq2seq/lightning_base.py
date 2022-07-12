@@ -185,6 +185,7 @@ class PrefixTransformer(pl.LightningModule):
 
         if self.hparams.prefixModel_name_or_path is not None:
             print('loading from {}'.format(hparams.prefixModel_name_or_path))
+            # the model is loaded here
             self.model = PrefixTuning.from_pretrained(self.hparams.prefixModel_name_or_path,
                         cache_dir=cache_dir,
                         config=config_prefix,

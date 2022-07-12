@@ -204,6 +204,9 @@ class PrefixTuning(PretrainedBartModel):
             elif not deep_param:
                 low_data_init = 0
                 print('UNDER PARAMETRIZATION 1')
+                # done since "directly updating prefix parameters leads to unstable optimization" (p. 4586)
+                # after training, "reparametrization parameters can be dropped, and only the prefix needs to be saved"
+                #
                 self.input_tokens = torch.arange(self.preseqlen).long()
                 self.wte = nn.Embedding(self.preseqlen, self.n_embd)
                 self.control_trans = nn.Sequential(
@@ -286,7 +289,7 @@ class PrefixTuning(PretrainedBartModel):
         ###### just trying #########
         total_param = 0
         for name, param in self.named_parameters():
-            print(param.shape)
+            print(name, param.shape)
             total_param += param.numel()
         print('total param is {}'.format(total_param))
 

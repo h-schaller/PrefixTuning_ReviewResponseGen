@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     elif args.mode == 'review_response_small':
         data_dir = '../data/review_response_small'
-        folder_name = "review_response_models_small/"
+        folder_name = "test_models/"
         max_source_length = 132
         max_target_length = 60
         val_max_target_length = 60
@@ -125,12 +125,13 @@ if __name__ == '__main__':
     batch_size = args.gradient_accumulation_steps * args.bsz
 
     if args.dir_name is None:
-        Model_FILE = args.mode + '_' + args.tuning_mode + '_' + args.optim_prefix[:1] + '_' + str(args.preseqlen) + \
-                     '_' + args.prefix_mode[:3] + '_' + args.format_mode[:3] + '_' + \
-                     'b={}-'.format(batch_size) + 'e={}_'.format(args.epoch) + 'd={}_'.format(args.dropout) + \
-                     'l={}_'.format(args.label_smoothing) + 'lr={}_'.format(args.learning_rate) \
-                     + 'w={}_'.format(args.weight_decay) + 's={}'.format(args.seed) + '_d={}'.format(args.use_deep[:1]) +\
-                     '_m={}'.format(args.mid_dim)
+        # Model_FILE = args.mode + '_' + args.tuning_mode + '_' + args.optim_prefix[:1] + '_' + str(args.preseqlen) + \
+        #              '_' + args.prefix_mode[:3] + '_' + args.format_mode[:3] + '_' + \
+        #              'b={}-'.format(batch_size) + 'e={}_'.format(args.epoch) + 'd={}_'.format(args.dropout) + \
+        #              'l={}_'.format(args.label_smoothing) + 'lr={}_'.format(args.learning_rate) \
+        #              + 'w={}_'.format(args.weight_decay) + 's={}'.format(args.seed) + '_d={}'.format(args.use_deep[:1]) +\
+        #              '_m={}'.format(args.mid_dim)
+        Model_FILE = args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate)
     else:
         Model_FILE = args.dir_name
 

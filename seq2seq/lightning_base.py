@@ -281,19 +281,19 @@ class PrefixTransformer(pl.LightningModule):
         print('Saving the the checkpoint.')
         return
 
-    @pl.utilities.rank_zero_only
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
-        # if filepath is not None:
-        #     save_path = filepath[:-5]
-        # else:
-        #     save_path = self.output_dir.joinpath("checkpoint-hello")
-        save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
-        print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
-
-        self.model.config.save_step = self.step_count
-        self.model.save_pretrained(save_path)
-        self.tokenizer.save_pretrained(save_path)
-        print('SAVING TO checkpoint {}'.format(save_path))
+    # @pl.utilities.rank_zero_only
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
+    #     # if filepath is not None:
+    #     #     save_path = filepath[:-5]
+    #     # else:
+    #     #     save_path = self.output_dir.joinpath("checkpoint-hello")
+    #     save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
+    #     print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
+    #
+    #     self.model.config.save_step = self.step_count
+    #     self.model.save_pretrained(save_path)
+    #     self.tokenizer.save_pretrained(save_path)
+    #     print('SAVING TO checkpoint {}'.format(save_path))
 
     @staticmethod
     def add_model_specific_args(parser, root_dir):
@@ -747,7 +747,7 @@ def generic_train(
     #     )
 
     #get_checkpoint_callback(args.output_dir, model.val_metric, args.save_top_k, lower_is_better)
-    checkpoint_callback = OurModelCheckPoint(filepath=args.output_dir, prefix="checkpoint", monitor="rouge2", mode="max", save_top_k=-1)
+    # checkpoint_callback = OurModelCheckPoint(filepath=args.output_dir, prefix="checkpoint", monitor="rouge2", mode="max", save_top_k=-1)
 
     # checkpoint_callback = OurModelCheckPoint(
     #     filepath=os.path.join(args.output_dir, exp),

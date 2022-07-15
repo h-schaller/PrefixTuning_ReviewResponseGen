@@ -41,7 +41,6 @@ sys.path.insert(2, str(Path(__file__).resolve().parents[1]))
 print(sys.path)
 from lightning_base import BaseTransformer, add_generic_args, generic_train, PrefixTransformer  # noqa
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +59,7 @@ class PrefixSummarizationModule(PrefixTransformer):
             if hparams.sortish_sampler:
                 raise ValueError("--sortish_sampler and --max_tokens_per_batch may not be used simultaneously")
         super().__init__(hparams, num_labels=None, mode=self.mode, **kwargs)
-        use_task_specific_params(self.model, "summarization")
+        # use_task_specific_params(self.model, "summarization")
         save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
@@ -118,9 +117,9 @@ class PrefixSummarizationModule(PrefixTransformer):
 
         self.training_acc_across_batches_at_curr_epoch = []
 
-        self.eval_max_length = 62
+        self.eval_max_length = self.hparams.val_max_target_length
         self.eval_min_length = 11
-        self.eval_beams =6
+        self.eval_beams = 6
         print('for deocding, eval_max_length={}, '
               'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length, self.eval_beams))
 
@@ -391,7 +390,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         parser.add_argument(
             "--early_stopping_patience",
             type=int,
-            default=-1,
+            default=5,
             required=False,
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
@@ -690,7 +689,7 @@ class SummarizationModule(BaseTransformer):
         parser.add_argument("--max_tokens_per_batch", type=int, default=None)
         parser.add_argument("--logger_name", type=str, choices=["default", "wandb", "wandb_shared"], default="default")
         parser.add_argument("--n_train", type=int, default=-1, required=False, help="# examples. -1 means use all.")
-        parser.add_argument("--n_val", type=int, default=500, required=False, help="# examples. -1 means use all.")
+        parser.add_argument("--n_val", type=int, default=-1, required=False, help="# examples. -1 means use all.")
         parser.add_argument("--n_test", type=int, default=-1, required=False, help="# examples. -1 means use all.")
         parser.add_argument(
             "--task", type=str, default="summarization", required=False, help="# examples. -1 means use all."
@@ -708,7 +707,7 @@ class SummarizationModule(BaseTransformer):
         parser.add_argument(
             "--early_stopping_patience",
             type=int,
-            default=-1,
+            default=5,
             required=False,
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
@@ -780,16 +779,16 @@ def main(args, model=None) -> SummarizationModule:
         logger=logger,
     )
     pickle_save(model.hparams, model.output_dir / "hparams.pkl")
-    if not args.do_predict:
-        return model
-
-    # The following code never gets called (with args.do_train, there's never args.do_predict)
-    model.hparams.test_checkpoint = ""
-    checkpoints = list(sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True)))
-    if checkpoints:
-        model.hparams.test_checkpoint = checkpoints[-1]
-        trainer.resume_from_checkpoint = checkpoints[-1]
-    trainer.logger.log_hyperparams(model.hparams)
+    # if not args.do_predict:
+    #     return model
+    #
+    # # The following code never gets called (with args.do_train, there's never args.do_predict)
+    # model.hparams.test_checkpoint = ""
+    # checkpoints = list(sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True)))
+    # if checkpoints:
+    #     model.hparams.test_checkpoint = checkpoints[-1]
+    #     trainer.resume_from_checkpoint = checkpoints[-1]
+    # trainer.logger.log_hyperparams(model.hparams)
 
     # test() without a model tests using the best checkpoint automatically
     trainer.test()
@@ -852,6 +851,7 @@ def eval(args, model=None) -> SummarizationModule:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(filename="training.log", level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = PrefixSummarizationModule.add_model_specific_args(parser, os.getcwd())

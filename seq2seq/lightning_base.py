@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Dict
 
 import pytorch_lightning as pl
@@ -33,7 +34,7 @@ from transformers.optimization import (
 
 from prefixTuning import PrefixTuning
 
-logger = logging.getLogger(__name__)
+my_logger = logging.getLogger(__name__)
 
 
 MODEL_MODES = {
@@ -78,18 +79,20 @@ class OurModelCheckPoint(pl.callbacks.ModelCheckpoint):
         super().__init__(**kwargs)
 
     def save_checkpoint(self, trainer, pl_module):
-        print('saving checkpoint now')
-        print('saving models now/22..')
-        print('try calling the pl_module save')
+        my_logger.info('saving checkpoint now')
+        my_logger.info('saving models now/22..')
+        my_logger.info('try calling the pl_module save')
         #pl_module.on_save_checkpoint(None, filepath)
         return
 
     def _save_model(self, filepath: str, trainer, pl_module):
-        print('saving models now/..')
-        print('try calling the pl_module save')
+        my_logger.info('saving models now/..')
+        my_logger.info('try calling the pl_module save')
         pl_module.on_save_checkpoint(None, filepath)
         return
 
+    def _del_model(self, filepath):
+        shutil.rmtree(filepath)
 
 
 class PrefixTransformer(pl.LightningModule):
@@ -113,7 +116,7 @@ class PrefixTransformer(pl.LightningModule):
         self.step_count = 0
         self.output_dir = Path(self.hparams.output_dir)
         cache_dir = self.hparams.cache_dir if self.hparams.cache_dir else None
-        print('the cache dir is {}'.format(cache_dir))
+        my_logger.info('the cache dir is {}'.format(cache_dir))
         if config is None:
             self.config = AutoConfig.from_pretrained(
                 self.hparams.config_name if self.hparams.config_name else self.hparams.model_name_or_path,
@@ -166,7 +169,7 @@ class PrefixTransformer(pl.LightningModule):
         else:
             assert False, "model_args.optim_prefix should be either yes or no"
 
-        print("model_type", self.model_type)
+        my_logger.info("model_type = {}".format(self.model_type))
         config_prefix._my_arg_tune_mode = self.hparams.tuning_mode
         config_prefix._my_arg_task_mode = self.hparams.task_mode
         config_prefix._my_arg_control = True
@@ -184,7 +187,7 @@ class PrefixTransformer(pl.LightningModule):
         # print(config_prefix)
 
         if self.hparams.prefixModel_name_or_path is not None:
-            print('loading from {}'.format(hparams.prefixModel_name_or_path))
+            my_logger.info('loading from {}'.format(hparams.prefixModel_name_or_path))
             # the model is loaded here
             self.model = PrefixTuning.from_pretrained(self.hparams.prefixModel_name_or_path,
                         cache_dir=cache_dir,
@@ -278,22 +281,22 @@ class PrefixTransformer(pl.LightningModule):
 
     @pl.utilities.rank_zero_only
     def save_checkpoint(self, trainer) -> None:
-        print('Saving the the checkpoint.')
+        my_logger.info('Saving the the checkpoint.')
         return
 
-    # @pl.utilities.rank_zero_only
-    # def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
-    #     # if filepath is not None:
-    #     #     save_path = filepath[:-5]
-    #     # else:
-    #     #     save_path = self.output_dir.joinpath("checkpoint-hello")
-    #     save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
-    #     print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
-    #
-    #     self.model.config.save_step = self.step_count
-    #     self.model.save_pretrained(save_path)
-    #     self.tokenizer.save_pretrained(save_path)
-    #     print('SAVING TO checkpoint {}'.format(save_path))
+    @pl.utilities.rank_zero_only
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
+        # if filepath is not None:
+        #     save_path = filepath[:-5]
+        # else:
+        #     save_path = self.output_dir.joinpath("checkpoint-hello")
+        save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
+        print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
+
+        self.model.config.save_step = self.step_count
+        self.model.save_pretrained(save_path)
+        self.tokenizer.save_pretrained(save_path)
+        print('SAVING TO checkpoint {}'.format(save_path))
 
     @staticmethod
     def add_model_specific_args(parser, root_dir):
@@ -581,7 +584,7 @@ class BaseTransformer(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
 
         save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
-        print('the suggested save_path is {}, saving to {}'.format(filepath[:-5], save_path))
+        my_logger.info('the suggested save_path is {}, saving to {}'.format(filepath[:-5], save_path))
         # save_path = self.output_dir.joinpath("best_tfmr")
         self.model.config.save_step = self.step_count
         self.model.save_pretrained(save_path)
@@ -739,28 +742,9 @@ def generic_train(
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
             filepath=args.output_dir, prefix="checkpoint", monitor="val_loss", mode="min", save_top_k=1
         )
-    # add custom checkpoints
-    # LISA
-    # if checkpoint_callback is None:
-    #     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-    #         filepath=args.output_dir, prefix="checkpoint", monitor="val_loss", mode="min", save_top_k=1
-    #     )
-
-    #get_checkpoint_callback(args.output_dir, model.val_metric, args.save_top_k, lower_is_better)
-    # checkpoint_callback = OurModelCheckPoint(filepath=args.output_dir, prefix="checkpoint", monitor="rouge2", mode="max", save_top_k=-1)
-
-    # checkpoint_callback = OurModelCheckPoint(
-    #     filepath=os.path.join(args.output_dir, exp),
-    #     monitor=f"val_{metric}",
-    #     mode="min" if "loss" in metric else "max",
-    #     save_top_k=save_top_k,
-    #     period=0,  # maybe save a checkpoint every time val is run, not just end of epoch.
-    # )
 
     if logging_callback is None:
         logging_callback = LoggingCallback()
-
-
 
     train_params = {}
 
@@ -775,10 +759,10 @@ def generic_train(
     train_params["accumulate_grad_batches"] = args.accumulate_grad_batches
     # train_params['progress_bar_refresh_rate'] = 0
 
-    print('the max number of epochs is {}'.format(args.max_epochs))
-    print('early stopping', early_stopping_callback)
-    print('checkpoint_callback', checkpoint_callback)
-    print('logging', logging_callback)
+    my_logger.info('the max number of epochs is {}'.format(args.max_epochs))
+    my_logger.info('early stopping {}'.format(early_stopping_callback))
+    my_logger.info('checkpoint_callback {}'.format(checkpoint_callback))
+    my_logger.info('logging {}'.format(logging_callback))
     trainer = pl.Trainer.from_argparse_args(
         args,
         max_epochs=args.max_epochs,
@@ -790,7 +774,7 @@ def generic_train(
         **train_params,
     )
 
-    print('args.do_train:', args.do_train)
+    my_logger.info('args.do_train: {}'.format(args.do_train))
 
     if args.do_train:
         trainer.fit(model)

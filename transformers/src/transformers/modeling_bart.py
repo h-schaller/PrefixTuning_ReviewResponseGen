@@ -1358,7 +1358,7 @@ class BartForConditionalGeneration(PretrainedBartModel):
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
-        print('Init the BartForConditionalGeneration Model with config.use_prefix={}, '
+        logger.info('Init the BartForConditionalGeneration Model with config.use_prefix={}, '
               'config.preseqlen={}'.format(config.use_prefix, config.preseqlen))
         base_model = BartModel(config)
         self.model = base_model

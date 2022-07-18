@@ -849,7 +849,7 @@ def eval(args, model=None) -> SummarizationModule:
     out_1 = args.model_name_or_path if args.tuning_mode == 'finetune' else args.prefixModel_name_or_path
     out_path = os.path.join(out_1, 'test_generations_beam_{}.txt'.format(int(args.length_penalty)))
     logger.info('writing the test results to {}'.format(out_path))
-    with open(out_path, 'w') as f:
+    with open(out_path, 'w', encoding='utf-8') as f:
         for preds in result['preds']:
             print(preds, file=f)
 

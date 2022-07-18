@@ -38,7 +38,7 @@ from utils import (
 
 # need the parent dir module
 sys.path.insert(2, str(Path(__file__).resolve().parents[1]))
-print(sys.path)
+# print(sys.path)
 from lightning_base import BaseTransformer, add_generic_args, generic_train, PrefixTransformer  # noqa
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class PrefixSummarizationModule(PrefixTransformer):
 
         freeze_params(self.seq2seq_model)
         assert_all_frozen(self.seq2seq_model)
-        print('FREEZING ENTIRE seq2seq model.')
+        logger.info('FREEZING ENTIRE seq2seq model.')
         # if self.hparams.freeze_encoder:
         #     freeze_params(self.model.get_encoder())
         #     assert_all_frozen(self.model.get_encoder())
@@ -120,7 +120,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         self.eval_max_length = self.hparams.val_max_target_length
         self.eval_min_length = 11
         self.eval_beams = 6
-        print('for deocding, eval_max_length={}, '
+        logger.info('for deocding, eval_max_length={}, '
               'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length, self.eval_beams))
 
     def freeze_embeds(self):
@@ -201,7 +201,7 @@ class PrefixSummarizationModule(PrefixTransformer):
 
     def on_epoch_end(self):
         train_acc_mean = np.mean(self.training_acc_across_batches_at_curr_epoch)
-        print('train_loss = {}'.format(train_acc_mean))
+        logger.info('train_loss = {}'.format(train_acc_mean))
         # print('train_PPL = {}'.format(train_acc_mean.exp()))
         self.training_acc_across_batches_per_epoch = []  # reset for next epoch
 
@@ -212,7 +212,10 @@ class PrefixSummarizationModule(PrefixTransformer):
         self.step_count += 1
         losses = {k: torch.stack([x[k] for x in outputs]).mean() for k in self.loss_names}
         loss = losses["loss"]
-        print(loss)
+        if prefix == 'test':
+            logger.info('test loss = {}'.format(loss))
+        else:
+            logger.info('validation loss = {}'.format(loss))
         generative_metrics = {
             k: np.array([x[k] for x in outputs]).mean() for k in self.metric_names + ["gen_time", "gen_len"]
         }
@@ -412,7 +415,7 @@ class SummarizationModule(BaseTransformer):
             if hparams.sortish_sampler:
                 raise ValueError("--sortish_sampler and --max_tokens_per_batch may not be used simultaneously")
         super().__init__(hparams, num_labels=None, mode=self.mode, **kwargs)
-        use_task_specific_params(self.model, "summarization")
+        # use_task_specific_params(self.model, "summarization")
         save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
@@ -444,12 +447,12 @@ class SummarizationModule(BaseTransformer):
         if self.hparams.freeze_embeds:
             self.freeze_embeds()
         else:
-            print('THE EMBEDDING IS NOT FROZEN.')
+            logger.info('THE EMBEDDING IS NOT FROZEN.')
         if self.hparams.freeze_encoder:
             freeze_params(self.model.get_encoder())
             assert_all_frozen(self.model.get_encoder())
         else:
-            print('THE ENCODER IS NOT FROZEN.')
+            logger.info('THE ENCODER IS NOT FROZEN.')
 
         self.hparams.git_sha = get_git_info()["repo_sha"]
         self.num_workers = hparams.num_workers
@@ -460,12 +463,20 @@ class SummarizationModule(BaseTransformer):
         self.dataset_class = (
             Seq2SeqDataset if hasattr(self.tokenizer, "prepare_seq2seq_batch") else LegacySeq2SeqDataset
         )
-        self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
-        assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
-        if self.hparams.eval_max_gen_length is not None:
-            self.eval_max_length = self.hparams.eval_max_gen_length
-        else:
-            self.eval_max_length = self.model.config.max_length
+        # self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
+        # assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
+        # if self.hparams.eval_max_gen_length is not None:
+        #     self.eval_max_length = self.hparams.eval_max_gen_length
+        # else:
+        #     self.eval_max_length = self.model.config.max_length
+
+        self.eval_max_length = self.hparams.val_max_target_length
+        self.eval_min_length = 11
+        self.eval_beams = 6
+        logger.info('for deocding, eval_max_length={}, '
+                    'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length,
+                                                               self.eval_beams))
+
         self.val_metric = self.default_val_metric if self.hparams.val_metric is None else self.hparams.val_metric
 
     def freeze_embeds(self):
@@ -540,7 +551,10 @@ class SummarizationModule(BaseTransformer):
         self.step_count += 1
         losses = {k: torch.stack([x[k] for x in outputs]).mean() for k in self.loss_names}
         loss = losses["loss"]
-        print(loss)
+        if prefix == 'test':
+            logger.info('test loss = {}'.format(loss))
+        else:
+            logger.info('validation loss = {}'.format(loss))
         generative_metrics = {
             k: np.array([x[k] for x in outputs]).mean() for k in self.metric_names + ["gen_time", "gen_len"]
         }
@@ -752,17 +766,7 @@ def main(args, model=None) -> SummarizationModule:
         or str(args.output_dir).startswith("/tmp")
         or str(args.output_dir).startswith("/var")
     ):
-        logger = True  # don't pollute wandb logs unnecessarily
-    # elif args.logger_name == "wandb":
-    #     from pytorch_lightning.loggers import WandbLogger
-    #
-    #     project = os.environ.get("WANDB_PROJECT", dataset)
-    #     logger = WandbLogger(name=model.output_dir.name, project=project)
-    #
-    # elif args.logger_name == "wandb_shared":
-    #     from pytorch_lightning.loggers import WandbLogger
-    #
-    #     logger = WandbLogger(name=model.output_dir.name, project=f"hf_{dataset}")
+        logger = True
 
     if args.early_stopping_patience >= 0:
         es_callback = get_early_stopping_callback(model.val_metric, args.early_stopping_patience)
@@ -791,14 +795,20 @@ def main(args, model=None) -> SummarizationModule:
     # trainer.logger.log_hyperparams(model.hparams)
 
     # test() without a model tests using the best checkpoint automatically
-    trainer.test()
+    #trainer.test()
+
+    args.prefixModel_name_or_path = args.output_dir
+    test_results = eval(args, model)
+
+    trainer.logger.log_metrics({k: v for k, v in test_results['log'].items()})
+
     return model
 
 
 def eval(args, model=None) -> SummarizationModule:
-    Path(args.output_dir).mkdir(exist_ok=True)
-    if len(os.listdir(args.output_dir)) > 3 and args.do_train:
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+    # Path(args.output_dir).mkdir(exist_ok=True)
+    # if len(os.listdir(args.output_dir)) > 3 and args.do_train:
+    #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if model is None:
         if "summarization" in args.task_mode:
             if args.tuning_mode == 'prefixtune':
@@ -815,9 +825,9 @@ def eval(args, model=None) -> SummarizationModule:
 
     with torch.no_grad():
         model.eval()
-        print(dataset)
+        # print(dataset)
         model = model.cuda()
-        print(model.device)
+        # print(model.device)
         data_loader = model.test_dataloader()
         out_lst = []
         for batch_idx, batch in enumerate(data_loader):
@@ -828,7 +838,7 @@ def eval(args, model=None) -> SummarizationModule:
             # print(batch['input_ids'].device, model.device)
             out = model.test_step(batch, batch_idx)
             out_lst.append(out)
-            print(out['preds'])
+            # print(out['preds'])
             # batch = model.transfer_batch_to_device(batch, 'cpu')
         result = model.test_epoch_end(out_lst)
 
@@ -837,17 +847,18 @@ def eval(args, model=None) -> SummarizationModule:
             print(k, v)
 
     out_1 = args.model_name_or_path if args.tuning_mode == 'finetune' else args.prefixModel_name_or_path
-    out_path = os.path.join(out_1, 'test_beam_{}'.format(args.length_penalty))
-    print('writing the test results to ', out_path)
+    out_path = os.path.join(out_1, 'test_generations_beam_{}.txt'.format(int(args.length_penalty)))
+    logger.info('writing the test results to {}'.format(out_path))
     with open(out_path, 'w') as f:
         for preds in result['preds']:
             print(preds, file=f)
 
-    out_path_metrics = out_path + '_metrics.json'
+    out_path_metrics = os.path.join(out_1, 'test_metrics.json')
     with open(out_path_metrics, 'w') as f:
         for k, v in result.items():
             if k == 'log':
                 print(v, file=f)
+    return result
 
 
 if __name__ == "__main__":
@@ -858,8 +869,22 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     pl.seed_everything(args.seed)
+
+    if not args.do_predict:
+        if args.tuning_mode == 'prefixtune':
+            logger.info('\n\nInitiate training for prefixtune_prelen={}'.format(args.preseqlen) + '_lr={}'.format(args.learning_rate))
+        elif args.tuning_mode == 'finetune':
+            logger.info('\n\nInitiate training for finetune_lr={}'.format(args.learning_rate))
+
     if args.do_predict:
+        if args.tuning_mode == 'prefixtune':
+            logger.info('\n\nTesting model prefixtune_prelen={}'.format(args.preseqlen) + '_lr={}'.format(args.learning_rate))
+        elif args.tuning_mode == 'finetune':
+            logger.info('\n\nTesting model finetune_lr={}'.format(args.learning_rate))
         eval(args)
     else:
         main(args)
+    # # eval() is called within main() now
+    # main(args)
+
 

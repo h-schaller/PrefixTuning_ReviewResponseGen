@@ -7,6 +7,8 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
 if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    gpus = 1
 
     parser = argparse.ArgumentParser(description='data2text E2E training args.')
     parser.add_argument('--mode', type=str, default='review_response', help='')
@@ -131,7 +133,10 @@ if __name__ == '__main__':
         #              'l={}_'.format(args.label_smoothing) + 'lr={}_'.format(args.learning_rate) \
         #              + 'w={}_'.format(args.weight_decay) + 's={}'.format(args.seed) + '_d={}'.format(args.use_deep[:1]) +\
         #              '_m={}'.format(args.mid_dim)
-        Model_FILE = args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate)
+        if args.tuning_mode == 'prefixtune':
+            Model_FILE = args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate)
+        elif args.tuning_mode == 'finetune':
+            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate)
     else:
         Model_FILE = args.dir_name
 
@@ -181,17 +186,17 @@ if __name__ == '__main__':
                       '--do_train ' \
                       '--label_smoothing {} ' \
                       '--use_deep {} ' \
-                      '--gpus 1 ' \
+                      '--gpus {} ' \
                       '--train_batch_size {} ' \
                       '--eval_batch_size {} ' \
                       '--num_train_epochs {} '.format(OLD_MODEL, Model_FILE, data_dir, args.tuning_mode, args.preseqlen, args.label_smoothing, args.use_deep,
-                                                      args.bsz, args.bsz, args.epoch)
+                                                      gpus, args.bsz, args.bsz, args.epoch)
     else:
         if args.tuning_mode == 'finetune':
             assert args.finetune_model_path is not None
             print('loading from the finetune model {}'.format(args.finetune_model_path))
-            Model_FILE = args.finetune_model_path + '_decode_eval' + '_{}'.format(args.length_pen)
-            print('writing the decoded results to {}'.format(Model_FILE))
+            # Model_FILE = args.finetune_model_path + '_decode_eval' + '_{}'.format(args.length_pen)
+            # print('writing the decoded results to {}'.format(Model_FILE))
             COMMANDLINE = 'python finetune.py ' \
                           '--model_name_or_path {} ' \
                           '--output_dir {} ' \
@@ -200,13 +205,13 @@ if __name__ == '__main__':
                           '--preseqlen {} ' \
                           '--do_predict ' \
                           '--use_deep {} ' \
-                          '--gpus 1 ' \
+                          '--gpus {} ' \
                           '--train_batch_size {} ' \
                           '--eval_batch_size {} ' \
                           '--length_penalty {} ' \
                           '--num_train_epochs {} '.format(args.finetune_model_path, Model_FILE, data_dir,
                                                           args.tuning_mode, args.preseqlen,  args.use_deep,
-                                                          args.bsz, args.bsz, args.length_pen, args.epoch)
+                                                          gpus, args.bsz, args.bsz, args.length_pen, args.epoch)
         else:
             assert args.prefix_model_path is not None
             print('loading from the prefix model {}'.format(args.prefix_model_path))
@@ -222,13 +227,13 @@ if __name__ == '__main__':
                           '--preseqlen {} ' \
                           '--do_predict ' \
                           '--use_deep {} ' \
-                          '--gpus 1 ' \
+                          '--gpus {} ' \
                           '--train_batch_size {} ' \
                           '--eval_batch_size {} ' \
                           '--seed {} ' \
                           '--length_penalty {} ' \
                           '--num_train_epochs {} '.format(OLD_MODEL, args.prefix_model_path, Model_FILE, data_dir,
-                                                          args.tuning_mode, args.preseqlen, args.use_deep,
+                                                          args.tuning_mode, args.preseqlen, args.use_deep, gpus,
                                                           args.bsz, args.bsz, args.seed, args.length_pen, args.epoch)
 
     COMMANDLINE += app

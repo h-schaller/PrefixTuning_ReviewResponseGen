@@ -2,13 +2,15 @@
 import torch
 from transformers import PreTrainedModel, GPT2PreTrainedModel, GPT2Tokenizer, PretrainedBartModel
 from torch import  nn
+import logging
 
+logger = logging.getLogger(__name__)
 
 class PrefixTuning(PretrainedBartModel):
     """Classification Head for  transformer encoders"""
     def __init__(self, config, model_gpt2, optim_prefix=False, preseqlen=5, use_infix=False, deep_param=False):
         super().__init__(config)
-        print('under the PrefixTuning model')
+        logger.info('under the PrefixTuning model')
 
         self.match_n_layer = config.decoder_layers
         self.match_n_head = config.decoder_attention_heads
@@ -98,12 +100,12 @@ class PrefixTuning(PretrainedBartModel):
 
         if self.optim_prefix:
             self.mode_para = 0
-            print('mode_para=0, for data2text Instruction based, just optimize a set of parameters ;) ')
-            print('preseqlen is {}, under the mode of optimizing prefix directly'.format(self.preseqlen))
+            # print('mode_para=0, for data2text Instruction based, just optimize a set of parameters ;) ')
+            logger.info('preseqlen is {}, under the mode of optimizing prefix directly'.format(self.preseqlen))
 
             # elif not deep_param:
             if not deep_param:
-                print('UNDER PARAMETRIZATION 1')
+                # print('UNDER PARAMETRIZATION 1')
                 # done since "directly updating prefix parameters leads to unstable optimization" (p. 4586)
                 # after training, "reparametrization parameters can be dropped, and only the prefix needs to be saved"
 
@@ -140,9 +142,9 @@ class PrefixTuning(PretrainedBartModel):
         ###### just trying #########
         total_param = 0
         for name, param in self.named_parameters():
-            print(name, param.shape)
+            logger.info(name + ' ' + str(param.shape))
             total_param += param.numel()
-        print('total param is {}'.format(total_param))
+        logger.info('total param is {}'.format(total_param))
 
     def get_prompt_p5(self, control_code=None, gpt2=None, bsz=None, sample_size=1):
         old_bsz = bsz

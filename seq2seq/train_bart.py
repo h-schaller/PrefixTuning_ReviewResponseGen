@@ -8,7 +8,6 @@ if not sys.warnoptions:
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    gpus = 1
 
     parser = argparse.ArgumentParser(description='data2text E2E training args.')
     parser.add_argument('--mode', type=str, default='review_response', help='')
@@ -190,7 +189,7 @@ if __name__ == '__main__':
                       '--train_batch_size {} ' \
                       '--eval_batch_size {} ' \
                       '--num_train_epochs {} '.format(OLD_MODEL, Model_FILE, data_dir, args.tuning_mode, args.preseqlen, args.label_smoothing, args.use_deep,
-                                                      gpus, args.bsz, args.bsz, args.epoch)
+                                                      args.gpus, args.bsz, args.bsz, args.epoch)
     else:
         if args.tuning_mode == 'finetune':
             assert args.finetune_model_path is not None
@@ -211,7 +210,7 @@ if __name__ == '__main__':
                           '--length_penalty {} ' \
                           '--num_train_epochs {} '.format(args.finetune_model_path, Model_FILE, data_dir,
                                                           args.tuning_mode, args.preseqlen,  args.use_deep,
-                                                          gpus, args.bsz, args.bsz, args.length_pen, args.epoch)
+                                                          args.gpus, args.bsz, args.bsz, args.length_pen, args.epoch)
         else:
             assert args.prefix_model_path is not None
             print('loading from the prefix model {}'.format(args.prefix_model_path))
@@ -233,7 +232,7 @@ if __name__ == '__main__':
                           '--seed {} ' \
                           '--length_penalty {} ' \
                           '--num_train_epochs {} '.format(OLD_MODEL, args.prefix_model_path, Model_FILE, data_dir,
-                                                          args.tuning_mode, args.preseqlen, args.use_deep, gpus,
+                                                          args.tuning_mode, args.preseqlen, args.use_deep, args.gpus,
                                                           args.bsz, args.bsz, args.seed, args.length_pen, args.epoch)
 
     COMMANDLINE += app

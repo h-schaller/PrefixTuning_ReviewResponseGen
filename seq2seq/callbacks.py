@@ -10,6 +10,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 from utils import save_json
 
+from lightning_base import OurModelCheckPoint
 
 def count_trainable_parameters(model):
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -31,7 +32,7 @@ class Seq2SeqLoggingCallback(pl.Callback):
     ) -> None:
         logger.info(f"***** {type_path} results at step {trainer.global_step:05d} *****")
         metrics = trainer.callback_metrics
-        trainer.logger.log_metrics({k: v for k, v in metrics.items() if k not in ["log", "progress_bar", "preds"]})
+        # trainer.logger.log_metrics({k: v for k, v in metrics.items() if k not in ["log", "progress_bar", "preds"]})
         # Log results
         od = Path(pl_module.hparams.output_dir)
         if type_path == "test":
@@ -97,7 +98,7 @@ def get_checkpoint_callback(output_dir, metric, save_top_k=1, lower_is_better=Fa
             f"seq2seq callbacks only support rouge2, bleu and loss, got {metric}, You can make your own by adding to this function."
         )
 
-    checkpoint_callback = ModelCheckpoint(
+    checkpoint_callback = OurModelCheckPoint(
         filepath=os.path.join(output_dir, exp),
         monitor=f"val_{metric}",
         mode="min" if "loss" in metric else "max",

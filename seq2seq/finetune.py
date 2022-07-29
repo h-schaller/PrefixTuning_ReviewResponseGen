@@ -12,6 +12,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pytorch_lightning as pl
+from pytorch_lightning.core.saving import save_hparams_to_yaml
 import torch
 from torch.utils.data import DataLoader
 
@@ -48,7 +49,7 @@ class PrefixSummarizationModule(PrefixTransformer):
     mode = "summarization"
     loss_names = ["loss"]
     metric_names = ROUGE_KEYS
-    default_val_metric = "rouge2"
+    default_val_metric = "loss"
 
     def __init__(self, hparams, **kwargs):
         if hparams.sortish_sampler and hparams.gpus > 1:
@@ -60,7 +61,7 @@ class PrefixSummarizationModule(PrefixTransformer):
                 raise ValueError("--sortish_sampler and --max_tokens_per_batch may not be used simultaneously")
         super().__init__(hparams, num_labels=None, mode=self.mode, **kwargs)
         # use_task_specific_params(self.model, "summarization")
-        save_git_info(self.hparams.output_dir)
+        # save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
         pickle_save(self.hparams, self.hparams_save_path)
@@ -98,7 +99,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         #     freeze_params(self.model.get_encoder())
         #     assert_all_frozen(self.model.get_encoder())
 
-        self.hparams.git_sha = get_git_info()["repo_sha"]
+        # self.hparams.git_sha = get_git_info()["repo_sha"]
         self.num_workers = hparams.num_workers
         self.decoder_start_token_id = None  # default to config
         if self.model.config.decoder_start_token_id is None and isinstance(self.tokenizer, MBartTokenizer):
@@ -107,21 +108,34 @@ class PrefixSummarizationModule(PrefixTransformer):
         self.dataset_class = (
             Seq2SeqDataset if hasattr(self.tokenizer, "prepare_seq2seq_batch") else LegacySeq2SeqDataset
         )
-        self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
+
+        if self.hparams.eval_beams is None:
+            self.eval_beams = self.model.config.num_beams
+            self.hparams.eval_beams = self.eval_beams
+        else:
+            self.eval_beams = self.hparams.eval_beams
         assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
-        if self.hparams.eval_max_gen_length is not None:
-            self.eval_max_length = self.hparams.eval_max_gen_length
+
+        if self.hparams.val_max_target_length is not None:
+            self.eval_max_length = self.hparams.val_max_target_length
+            self.hparams.eval_max_gen_length = self.hparams.val_max_target_length
         else:
             self.eval_max_length = self.model.config.max_length
-        self.val_metric = self.default_val_metric if self.hparams.val_metric is None else self.hparams.val_metric
+
+        if self.hparams.val_metric is None:
+            self.val_metric = self.default_val_metric
+            self.hparams.val_metric = self.val_metric
+        else:
+            self.hparams.val_metric
 
         self.training_acc_across_batches_at_curr_epoch = []
 
-        self.eval_max_length = self.hparams.val_max_target_length
         self.eval_min_length = 11
-        self.eval_beams = 6
+        self.hparams.eval_min_length = 11
+
         logger.info('for deocding, eval_max_length={}, '
-              'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length, self.eval_beams))
+                    'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length,
+                                                               self.eval_beams))
 
     def freeze_embeds(self):
         """Freeze token embeddings and positional embeddings for bart, just token embeddings for t5."""
@@ -222,7 +236,8 @@ class PrefixSummarizationModule(PrefixTransformer):
         metric_val = (
             generative_metrics[self.val_metric] if self.val_metric in generative_metrics else losses[self.val_metric]
         )
-        metric_tensor: torch.FloatTensor = torch.tensor(metric_val).type_as(loss)
+        # metric_tensor: torch.FloatTensor = torch.tensor(metric_val).type_as(loss)
+        metric_tensor: torch.FloatTensor = metric_val.clone().detach().type_as(loss)
         generative_metrics.update({k: v.item() for k, v in losses.items()})
         losses.update(generative_metrics)
         all_metrics = {f"{prefix}_avg_{k}": x for k, x in losses.items()}
@@ -397,6 +412,7 @@ class PrefixSummarizationModule(PrefixTransformer):
             required=False,
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
+        parser.add_argument('--checkpoint_path', default=None, help='')
         return parser
 
 
@@ -404,7 +420,7 @@ class SummarizationModule(BaseTransformer):
     mode = "summarization"
     loss_names = ["loss"]
     metric_names = ROUGE_KEYS
-    default_val_metric = "rouge2"
+    default_val_metric = "loss"
 
     def __init__(self, hparams, **kwargs):
         if hparams.sortish_sampler and hparams.gpus > 1:
@@ -416,7 +432,7 @@ class SummarizationModule(BaseTransformer):
                 raise ValueError("--sortish_sampler and --max_tokens_per_batch may not be used simultaneously")
         super().__init__(hparams, num_labels=None, mode=self.mode, **kwargs)
         # use_task_specific_params(self.model, "summarization")
-        save_git_info(self.hparams.output_dir)
+        # save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
         pickle_save(self.hparams, self.hparams_save_path)
@@ -454,7 +470,7 @@ class SummarizationModule(BaseTransformer):
         else:
             logger.info('THE ENCODER IS NOT FROZEN.')
 
-        self.hparams.git_sha = get_git_info()["repo_sha"]
+        # self.hparams.git_sha = get_git_info()["repo_sha"]
         self.num_workers = hparams.num_workers
         self.decoder_start_token_id = None  # default to config
         if self.model.config.decoder_start_token_id is None and isinstance(self.tokenizer, MBartTokenizer):
@@ -463,21 +479,25 @@ class SummarizationModule(BaseTransformer):
         self.dataset_class = (
             Seq2SeqDataset if hasattr(self.tokenizer, "prepare_seq2seq_batch") else LegacySeq2SeqDataset
         )
-        # self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
-        # assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
-        # if self.hparams.eval_max_gen_length is not None:
-        #     self.eval_max_length = self.hparams.eval_max_gen_length
-        # else:
-        #     self.eval_max_length = self.model.config.max_length
+        self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
+        assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
+        if self.hparams.val_max_target_length is not None:
+            self.eval_max_length = self.hparams.val_max_target_length
+        else:
+            self.eval_max_length = self.model.config.max_length
 
-        self.eval_max_length = self.hparams.val_max_target_length
         self.eval_min_length = 11
-        self.eval_beams = 6
+        self.hparams.eval_min_length = 11
+
+        self.hparams.eval_beams = self.eval_beams
+        self.hparams.eval_max_gen_length = self.hparams.val_max_target_length
+
         logger.info('for deocding, eval_max_length={}, '
                     'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length,
                                                                self.eval_beams))
 
         self.val_metric = self.default_val_metric if self.hparams.val_metric is None else self.hparams.val_metric
+        self.hparams.val_metric = self.val_metric
 
     def freeze_embeds(self):
         """Freeze token embeddings and positional embeddings for bart, just token embeddings for t5."""
@@ -561,7 +581,8 @@ class SummarizationModule(BaseTransformer):
         metric_val = (
             generative_metrics[self.val_metric] if self.val_metric in generative_metrics else losses[self.val_metric]
         )
-        metric_tensor: torch.FloatTensor = torch.tensor(metric_val).type_as(loss)
+        # metric_tensor: torch.FloatTensor = torch.tensor(metric_val).type_as(loss)
+        metric_tensor: torch.FloatTensor = metric_val.clone().detach().type_as(loss)
         generative_metrics.update({k: v.item() for k, v in losses.items()})
         losses.update(generative_metrics)
         all_metrics = {f"{prefix}_avg_{k}": x for k, x in losses.items()}
@@ -725,6 +746,7 @@ class SummarizationModule(BaseTransformer):
             required=False,
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
+        parser.add_argument('--checkpoint_path', default=None, help='')
         return parser
 
 
@@ -746,9 +768,9 @@ class TranslationModule(SummarizationModule):
 def main(args, model=None) -> SummarizationModule:
     Path(args.output_dir).mkdir(exist_ok=True)
     if len(os.listdir(args.output_dir)) > 3 and args.do_train:
-        # print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
-        
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+        print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
+
+        # raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if model is None:
         if args.tuning_mode == 'prefixtune':
             model = PrefixSummarizationModule(args)
@@ -770,10 +792,15 @@ def main(args, model=None) -> SummarizationModule:
 
     if args.early_stopping_patience >= 0:
         es_callback = get_early_stopping_callback(model.val_metric, args.early_stopping_patience)
+        model.hparams.early_stop_callback = True
     else:
         es_callback = False
 
     lower_is_better = args.val_metric == "loss"
+
+    if args.checkpoint_path == 'None':
+        args.checkpoint_path = None
+
     trainer: pl.Trainer = generic_train(
         model,
         args,
@@ -783,19 +810,12 @@ def main(args, model=None) -> SummarizationModule:
         logger=logger,
     )
     pickle_save(model.hparams, model.output_dir / "hparams.pkl")
-    # if not args.do_predict:
-    #     return model
-    #
-    # # The following code never gets called (with args.do_train, there's never args.do_predict)
-    # model.hparams.test_checkpoint = ""
-    # checkpoints = list(sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True)))
-    # if checkpoints:
-    #     model.hparams.test_checkpoint = checkpoints[-1]
-    #     trainer.resume_from_checkpoint = checkpoints[-1]
-    # trainer.logger.log_hyperparams(model.hparams)
+    save_hparams_to_yaml(config_yaml=model.output_dir / "hparams.yaml", hparams=model.hparams)
 
-    # test() without a model tests using the best checkpoint automatically
-    #trainer.test()
+    # for file in os.listdir(args.output_dir):
+    #     if file.startswith('val_avg_loss') and not file.endswith('.ckpt'):
+    #         os.remove(args.output_dir + '/' + file)
+
 
     args.prefixModel_name_or_path = args.output_dir
     test_results = eval(args, model)
@@ -846,8 +866,9 @@ def eval(args, model=None) -> SummarizationModule:
         if k != 'preds':
             print(k, v)
 
-    out_1 = args.model_name_or_path if args.tuning_mode == 'finetune' else args.prefixModel_name_or_path
-    out_path = os.path.join(out_1, 'test_generations_beam_{}.txt'.format(int(args.length_penalty)))
+    # out_1 = args.model_name_or_path if args.tuning_mode == 'finetune' else args.prefixModel_name_or_path
+    out_1 = args.output_dir
+    out_path = os.path.join(out_1, 'test_generations_beam_{}_len-pen_{}.txt'.format(int(model.eval_beams), int(args.length_penalty)))
     logger.info('writing the test results to {}'.format(out_path))
     with open(out_path, 'w', encoding='utf-8') as f:
         for preds in result['preds']:

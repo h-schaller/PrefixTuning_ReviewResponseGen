@@ -86,13 +86,17 @@ class OurModelCheckPoint(pl.callbacks.ModelCheckpoint):
         return
 
     def _save_model(self, filepath: str, trainer, pl_module):
-        my_logger.info('saving models now/..')
-        my_logger.info('try calling the pl_module save')
-        pl_module.on_save_checkpoint(None, filepath)
+        my_logger.info('Saving Huggingface checkpoint...')
+        pl_module.model.config.save_step = pl_module.step_count
+        pl_module.model.save_pretrained(filepath)
+        pl_module.tokenizer.save_pretrained(filepath)
+        my_logger.info('Saving pl checkpoint...')
+        trainer.save_checkpoint(filepath.rstrip('.ckpt'))
         return
 
     def _del_model(self, filepath):
         shutil.rmtree(filepath)
+        os.remove(filepath.rstrip('.ckpt'))
 
 
 class PrefixTransformer(pl.LightningModule):
@@ -248,7 +252,10 @@ class PrefixTransformer(pl.LightningModule):
     @property
     def total_steps(self) -> int:
         """The number of total training steps that will be run. Used for lr scheduler purposes."""
-        num_devices = max(1, self.hparams.gpus)  # TODO: consider num_tpu_cores
+        if isinstance(self.hparams.gpus, str):
+            num_devices = max(1, len(self.hparams.gpus.split(',')))
+        else:
+            num_devices = max(1, self.hparams.gpus)  # TODO: consider num_tpu_cores
         effective_batch_size = self.hparams.train_batch_size * self.hparams.accumulate_grad_batches * num_devices
         dataset_size = len(self.train_loader.dataset)
         return (dataset_size / effective_batch_size) * self.hparams.max_epochs
@@ -279,24 +286,24 @@ class PrefixTransformer(pl.LightningModule):
             ),
         )
 
-    @pl.utilities.rank_zero_only
-    def save_checkpoint(self, trainer) -> None:
-        my_logger.info('Saving the the checkpoint.')
-        return
+    # @pl.utilities.rank_zero_only
+    # def save_checkpoint(self, trainer) -> None:
+    #     my_logger.info('Saving the the checkpoint.')
+    #     return
 
-    @pl.utilities.rank_zero_only
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
-        # if filepath is not None:
-        #     save_path = filepath[:-5]
-        # else:
-        #     save_path = self.output_dir.joinpath("checkpoint-hello")
-        save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
-        print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
-
-        self.model.config.save_step = self.step_count
-        self.model.save_pretrained(save_path)
-        self.tokenizer.save_pretrained(save_path)
-        print('SAVING TO checkpoint {}'.format(save_path))
+    # @pl.utilities.rank_zero_only
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
+    #     # if filepath is not None:
+    #     #     save_path = filepath[:-5]
+    #     # else:
+    #     #     save_path = self.output_dir.joinpath("checkpoint-hello")
+    #     save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
+    #     # print('the suggested save_path is {}, saving to {}'.format(filepath, save_path))
+    #
+    #     self.model.config.save_step = self.step_count
+    #     self.model.save_pretrained(save_path)
+    #     self.tokenizer.save_pretrained(save_path)
+    #     # print('SAVING TO checkpoint {}'.format(save_path))
 
     @staticmethod
     def add_model_specific_args(parser, root_dir):
@@ -433,7 +440,7 @@ class PrefixTransformer(pl.LightningModule):
         parser.add_argument("--weight_decay", default=0.0, type=float, help="Weight decay if we apply some.")
         parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
         parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
-        parser.add_argument("--num_workers", default=4, type=int, help="kwarg passed to DataLoader")
+        parser.add_argument("--num_workers", default=24, type=int, help="kwarg passed to DataLoader")
         parser.add_argument("--num_train_epochs", dest="max_epochs", default=3, type=int)
         parser.add_argument("--train_batch_size", default=10, type=int)
         parser.add_argument("--eval_batch_size", default=10, type=int)
@@ -580,15 +587,15 @@ class BaseTransformer(pl.LightningModule):
             ),
         )
 
-    @pl.utilities.rank_zero_only
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
-
-        save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
-        my_logger.info('the suggested save_path is {}, saving to {}'.format(filepath[:-5], save_path))
-        # save_path = self.output_dir.joinpath("best_tfmr")
-        self.model.config.save_step = self.step_count
-        self.model.save_pretrained(save_path)
-        self.tokenizer.save_pretrained(save_path)
+    # @pl.utilities.rank_zero_only
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any], filepath=None) -> None:
+    #
+    #     save_path = filepath #self.output_dir.joinpath("checkpoint-curr_best")
+    #     # my_logger.info('the suggested save_path is {}, saving to {}'.format(filepath[:-5], save_path))
+    #     # save_path = self.output_dir.joinpath("best_tfmr")
+    #     self.model.config.save_step = self.step_count
+    #     self.model.save_pretrained(save_path)
+    #     self.tokenizer.save_pretrained(save_path)
 
     @staticmethod
     def add_model_specific_args(parser, root_dir):
@@ -646,7 +653,7 @@ class BaseTransformer(pl.LightningModule):
         parser.add_argument("--weight_decay", default=0.0, type=float, help="Weight decay if we apply some.")
         parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
         parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
-        parser.add_argument("--num_workers", default=4, type=int, help="kwarg passed to DataLoader")
+        parser.add_argument("--num_workers", default=24, type=int, help="kwarg passed to DataLoader")
         parser.add_argument("--num_train_epochs", dest="max_epochs", default=3, type=int)
         parser.add_argument("--train_batch_size", default=32, type=int)
         parser.add_argument("--eval_batch_size", default=32, type=int)
@@ -736,7 +743,8 @@ def generic_train(
 
     # init model
     odir = Path(model.hparams.output_dir)
-    odir.mkdir(exist_ok=True)
+    if not os.path.isdir(odir):
+        odir.mkdir()
 
     if checkpoint_callback is None:
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
@@ -753,11 +761,20 @@ def generic_train(
         train_params["precision"] = 16
         train_params["amp_level"] = args.fp16_opt_level
 
-    if args.gpus > 1:
-        train_params["distributed_backend"] = "ddp"
+    if isinstance(args.gpus, int):
+        if args.gpus > 1:
+            train_params["distributed_backend"] = "ddp"
+    elif isinstance(args.gpus, str):
+        if len(args.gpus.split(',')) > 1:
+            train_params["distributed_backend"] = "ddp"
+            # train_params['gpus'] = len(args.gpus.split(','))
+            # train_params["replace_sampler_ddp"] = True
 
     train_params["accumulate_grad_batches"] = args.accumulate_grad_batches
     # train_params['progress_bar_refresh_rate'] = 0
+
+    if args.checkpoint_path is not None:
+        my_logger.info('resume training from checkpoint {}'.format(args.checkpoint_path))
 
     my_logger.info('the max number of epochs is {}'.format(args.max_epochs))
     my_logger.info('early stopping {}'.format(early_stopping_callback))
@@ -770,7 +787,8 @@ def generic_train(
         callbacks=[logging_callback] + extra_callbacks,
         logger=logger,
         checkpoint_callback=checkpoint_callback,
-        #early_stop_callback=early_stopping_callback,
+        early_stop_callback=early_stopping_callback,
+        resume_from_checkpoint=args.checkpoint_path,
         **train_params,
     )
 

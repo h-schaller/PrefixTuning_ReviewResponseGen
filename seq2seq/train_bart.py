@@ -1,5 +1,6 @@
 import os, sys
 import argparse
+import ntpath
 
 # example: python train_run.py keyword temp_keyword _
 if not sys.warnoptions:
@@ -17,6 +18,7 @@ if __name__ == '__main__':
     parser.add_argument('--preseqlen', type=int, default=5, help='')
     parser.add_argument('--prefix_mode', type=str, default='activation', help='')
     parser.add_argument('--format_mode', type=str, default='cat', help='')
+    parser.add_argument('--data_dir', type=str, default=None, help='')
 
     parser.add_argument('--dir_name', type=str, default=None, help='')
     parser.add_argument('--notes', type=str, default=None, help='')
@@ -55,6 +57,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--prefix_model_path', type=str, default=None, help='')
     parser.add_argument('--finetune_model_path', type=str, default=None, help='')
+    parser.add_argument('--checkpoint_path', default=None, help='')
 
     args = parser.parse_args()
 
@@ -90,12 +93,16 @@ if __name__ == '__main__':
         assert args.optim_prefix == 'yes'
 
     elif args.mode == 'review_response':
-        data_dir = '../data/review_response'
-        folder_name = "review_response_models/"
-        max_source_length = 1024
-        max_target_length = 256
-        val_max_target_length = 256
-        test_max_target_length = 256
+        # data_dir = '../data/review_response'
+        if args.tuning_mode == 'finetune':
+            folder_name = 'finetuned_models/'
+        elif args.tuning_mode == 'prefixtune':
+            folder_name = 'prefix_models/'
+        # folder_name = "review_response_models/"
+        max_source_length = 256
+        max_target_length = 128
+        val_max_target_length = 128
+        test_max_target_length = 128
 
         review_response_app = ' --max_source_length {} --max_target_length {} --val_max_target_length {} ' \
                    '--test_max_target_length {} '.format(max_source_length, max_target_length,
@@ -105,8 +112,12 @@ if __name__ == '__main__':
             review_response_app += ' --fp16 --fp16_opt_level O1 '
 
     elif args.mode == 'review_response_small':
-        data_dir = '../data/review_response_small'
-        folder_name = "test_models/"
+        # data_dir = '../data/review_response'
+        if args.tuning_mode == 'finetune':
+            folder_name = 'finetuned_models/'
+        elif args.tuning_mode == 'prefixtune':
+            folder_name = 'prefix_models/'
+        # folder_name = "review_response_models/"
         max_source_length = 132
         max_target_length = 60
         val_max_target_length = 60
@@ -134,9 +145,14 @@ if __name__ == '__main__':
         #              + 'w={}_'.format(args.weight_decay) + 's={}'.format(args.seed) + '_d={}'.format(args.use_deep[:1]) +\
         #              '_m={}'.format(args.mid_dim)
         if args.tuning_mode == 'prefixtune':
-            Model_FILE = args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate)
+            norm_data_dir = ntpath.normpath(args.data_dir)
+            restaurant = norm_data_dir.split("\\")[-1]
+            Model_FILE = restaurant + '/' + args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz)
+            if not os.path.isdir(folder_name + restaurant):
+                os.mkdir(folder_name + restaurant)
+
         elif args.tuning_mode == 'finetune':
-            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate)
+            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz)
     else:
         Model_FILE = args.dir_name
 
@@ -189,8 +205,9 @@ if __name__ == '__main__':
                       '--gpus {} ' \
                       '--train_batch_size {} ' \
                       '--eval_batch_size {} ' \
-                      '--num_train_epochs {} '.format(OLD_MODEL, Model_FILE, data_dir, args.tuning_mode, args.preseqlen, args.label_smoothing, args.use_deep,
-                                                      gpus, args.bsz, args.bsz, args.epoch)
+                      '--num_train_epochs {} ' \
+                      '--checkpoint_path {} '.format(OLD_MODEL, Model_FILE, args.data_dir, args.tuning_mode, args.preseqlen, args.label_smoothing, args.use_deep,
+                                                      gpus, args.bsz, args.bsz - 2, args.epoch, args.checkpoint_path)
     else:
         if args.tuning_mode == 'finetune':
             assert args.finetune_model_path is not None
@@ -209,15 +226,15 @@ if __name__ == '__main__':
                           '--train_batch_size {} ' \
                           '--eval_batch_size {} ' \
                           '--length_penalty {} ' \
-                          '--num_train_epochs {} '.format(args.finetune_model_path, Model_FILE, data_dir,
+                          '--num_train_epochs {} '.format(args.finetune_model_path, Model_FILE, args.data_dir,
                                                           args.tuning_mode, args.preseqlen,  args.use_deep,
-                                                          gpus, args.bsz, args.bsz, args.length_pen, args.epoch)
+                                                          gpus, args.bsz,  args.bsz - 2, args.length_pen, args.epoch)
         else:
             assert args.prefix_model_path is not None
             print('loading from the prefix model {}'.format(args.prefix_model_path))
             print('loading from the main model {}'.format(OLD_MODEL))
-            Model_FILE = args.prefix_model_path + '_decode_eval' + '_{}'.format(args.length_pen)
-            print('writing the decoded results to {}'.format(Model_FILE))
+            #Model_FILE = args.prefix_model_path + '_decode_eval' + '_{}'.format(args.length_pen)
+            #print('writing the decoded results to {}'.format(Model_FILE))
             COMMANDLINE = 'python finetune.py ' \
                           '--model_name_or_path {} ' \
                           '--prefixModel_name_or_path {} ' \
@@ -232,9 +249,9 @@ if __name__ == '__main__':
                           '--eval_batch_size {} ' \
                           '--seed {} ' \
                           '--length_penalty {} ' \
-                          '--num_train_epochs {} '.format(OLD_MODEL, args.prefix_model_path, Model_FILE, data_dir,
+                          '--num_train_epochs {} '.format(OLD_MODEL, args.prefix_model_path, Model_FILE, args.data_dir,
                                                           args.tuning_mode, args.preseqlen, args.use_deep, gpus,
-                                                          args.bsz, args.bsz, args.seed, args.length_pen, args.epoch)
+                                                          args.bsz,  args.bsz - 2, args.seed, args.length_pen, args.epoch)
 
     COMMANDLINE += app
 

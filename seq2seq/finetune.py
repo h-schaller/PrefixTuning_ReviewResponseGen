@@ -25,6 +25,8 @@ from utils import (
     Seq2SeqDataset,
     assert_all_frozen,
     calculate_bleu,
+    calculate_chrf,
+    calculate_distinct,
     calculate_rouge,
     flatten_list,
     freeze_params,
@@ -48,7 +50,7 @@ logger = logging.getLogger(__name__)
 class PrefixSummarizationModule(PrefixTransformer):
     mode = "summarization"
     loss_names = ["loss"]
-    metric_names = ROUGE_KEYS
+    metric_names = ROUGE_KEYS + ['bleu', 'chrf', 'dist-1', 'dist-2']
     default_val_metric = "loss"
 
     def __init__(self, hparams, **kwargs):
@@ -64,7 +66,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         # save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
-        pickle_save(self.hparams, self.hparams_save_path)
+        # pickle_save(self.hparams, self.hparams_save_path)
         self.step_count = 0
         self.metrics = defaultdict(list)
         self.model_type = self.config.model_type
@@ -252,8 +254,8 @@ class PrefixSummarizationModule(PrefixTransformer):
         }
 
     def calc_generative_metrics(self, preds, target) -> Dict:
-        return calculate_rouge(preds, target)
-        # return calculate_bleu(preds, target)
+        return {**calculate_rouge(preds, target), **calculate_bleu(preds, target), **calculate_chrf(preds, target),
+                **calculate_distinct(preds)}
 
     def _generative_step(self, batch: dict) -> dict:
         t0 = time.time()
@@ -419,7 +421,7 @@ class PrefixSummarizationModule(PrefixTransformer):
 class SummarizationModule(BaseTransformer):
     mode = "summarization"
     loss_names = ["loss"]
-    metric_names = ROUGE_KEYS
+    metric_names = ROUGE_KEYS + ['bleu', 'chrf', 'dist-1', 'dist-2']
     default_val_metric = "loss"
 
     def __init__(self, hparams, **kwargs):
@@ -435,7 +437,7 @@ class SummarizationModule(BaseTransformer):
         # save_git_info(self.hparams.output_dir)
         self.metrics_save_path = Path(self.output_dir) / "metrics.json"
         self.hparams_save_path = Path(self.output_dir) / "hparams.pkl"
-        pickle_save(self.hparams, self.hparams_save_path)
+        # pickle_save(self.hparams, self.hparams_save_path)
         self.step_count = 0
         self.metrics = defaultdict(list)
         self.model_type = self.config.model_type
@@ -597,7 +599,8 @@ class SummarizationModule(BaseTransformer):
         }
 
     def calc_generative_metrics(self, preds, target) -> Dict:
-        return calculate_rouge(preds, target)
+        return {**calculate_rouge(preds, target), **calculate_bleu(preds, target), **calculate_chrf(preds, target),
+                **calculate_distinct(preds)}
 
     def _generative_step(self, batch: dict) -> dict:
         t0 = time.time()
@@ -750,27 +753,12 @@ class SummarizationModule(BaseTransformer):
         return parser
 
 
-class TranslationModule(SummarizationModule):
-    mode = "translation"
-    loss_names = ["loss"]
-    metric_names = ["bleu"]
-    default_val_metric = "bleu"
-
-    def __init__(self, hparams, **kwargs):
-        super().__init__(hparams, **kwargs)
-        self.dataset_kwargs["src_lang"] = hparams.src_lang
-        self.dataset_kwargs["tgt_lang"] = hparams.tgt_lang
-
-    def calc_generative_metrics(self, preds, target) -> dict:
-        return calculate_bleu(preds, target)
-
-
 def main(args, model=None) -> SummarizationModule:
     Path(args.output_dir).mkdir(exist_ok=True)
     if len(os.listdir(args.output_dir)) > 3 and args.do_train:
-        print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
+        # print('Output directory ({}) already exists and is not empty, overwrite to it...'.format(args.output_dir))
 
-        # raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if model is None:
         if args.tuning_mode == 'prefixtune':
             model = PrefixSummarizationModule(args)
@@ -812,9 +800,9 @@ def main(args, model=None) -> SummarizationModule:
     pickle_save(model.hparams, model.output_dir / "hparams.pkl")
     save_hparams_to_yaml(config_yaml=model.output_dir / "hparams.yaml", hparams=model.hparams)
 
-    # for file in os.listdir(args.output_dir):
-    #     if file.startswith('val_avg_loss') and not file.endswith('.ckpt'):
-    #         os.remove(args.output_dir + '/' + file)
+    for file in os.listdir(args.output_dir):
+        if file.startswith('val_avg_loss') and not file.endswith('.ckpt'):
+            os.remove(args.output_dir + '/' + file)
 
 
     args.prefixModel_name_or_path = args.output_dir
@@ -837,44 +825,32 @@ def eval(args, model=None) -> SummarizationModule:
                 model: SummarizationModule = SummarizationModule(args)
             else:
                 assert False, 'invalid tuning_mode'
-        else:
-            model: SummarizationModule = TranslationModule(args)
-
-    # print(model)
-    dataset = Path(args.data_dir).name
 
     with torch.no_grad():
         model.eval()
-        # print(dataset)
         model = model.cuda()
-        # print(model.device)
         data_loader = model.test_dataloader()
         out_lst = []
         for batch_idx, batch in enumerate(data_loader):
-            # print(batch)
             batch = model.transfer_batch_to_device(batch, model.device)
-            # if batch_idx>10:
-            #     continue
-            # print(batch['input_ids'].device, model.device)
             out = model.test_step(batch, batch_idx)
             out_lst.append(out)
-            # print(out['preds'])
-            # batch = model.transfer_batch_to_device(batch, 'cpu')
         result = model.test_epoch_end(out_lst)
 
     for k, v in result.items():
         if k != 'preds':
             print(k, v)
 
-    # out_1 = args.model_name_or_path if args.tuning_mode == 'finetune' else args.prefixModel_name_or_path
     out_1 = args.output_dir
-    out_path = os.path.join(out_1, 'test_generations_beam_{}_len-pen_{}.txt'.format(int(model.eval_beams), int(args.length_penalty)))
+    if not os.path.isdir(os.path.join(out_1, 'test_results')):
+        os.mkdir(os.path.join(out_1, 'test_results'))
+    out_path = os.path.join(out_1, 'test_results', 'test_generations_beam_{}_len-pen_{}_{}.txt'.format(int(model.eval_beams), int(args.length_penalty), args.data_dir.split('/')[-1]))
     logger.info('writing the test results to {}'.format(out_path))
     with open(out_path, 'w', encoding='utf-8') as f:
         for preds in result['preds']:
             print(preds, file=f)
 
-    out_path_metrics = os.path.join(out_1, 'test_metrics.json')
+    out_path_metrics = os.path.join(out_1, 'test_results', 'test_metrics_{}.json'.format(args.data_dir.split('/')[-1]))
     with open(out_path_metrics, 'w') as f:
         for k, v in result.items():
             if k == 'log':
@@ -896,6 +872,7 @@ if __name__ == "__main__":
             logger.info('\n\nInitiate training for prefixtune_prelen={}'.format(args.preseqlen) + '_lr={}'.format(args.learning_rate))
         elif args.tuning_mode == 'finetune':
             logger.info('\n\nInitiate training for finetune_lr={}'.format(args.learning_rate))
+        main(args)
 
     if args.do_predict:
         if args.tuning_mode == 'prefixtune':
@@ -903,9 +880,3 @@ if __name__ == "__main__":
         elif args.tuning_mode == 'finetune':
             logger.info('\n\nTesting model finetune_lr={}'.format(args.learning_rate))
         eval(args)
-    else:
-        main(args)
-    # # eval() is called within main() now
-    # main(args)
-
-

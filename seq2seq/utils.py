@@ -1,7 +1,9 @@
+from collections import Counter
 import itertools
 import json
 import linecache
 import math
+from nltk.tokenize import word_tokenize
 import os
 import pickle
 import socket
@@ -14,7 +16,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from rouge_score import rouge_scorer, scoring
-from sacrebleu import corpus_bleu
+from sacrebleu import corpus_bleu, corpus_chrf
 from torch import nn
 from torch.utils.data import Dataset, Sampler
 
@@ -72,6 +74,35 @@ def lmap(f: Callable, x: Iterable) -> List:
 def calculate_bleu(output_lns, refs_lns, **kwargs) -> dict:
     """Uses sacrebleu's corpus_bleu implementation."""
     return {"bleu": round(corpus_bleu(output_lns, [refs_lns], **kwargs).score, 4)}
+
+
+def calculate_chrf(output_lns, refs_lns, **kwargs) -> dict:
+    """Uses sacrebleu's chrF implementation."""
+    return {"chrf": round(corpus_chrf(output_lns, [refs_lns], **kwargs).score, 4)}
+
+
+def calculate_distinct(seqs):
+    """ Calculate intra/inter distinct 1/2. """
+    intra_dist1, intra_dist2 = [], []
+    unigrams_all, bigrams_all = Counter(), Counter()
+    for seq in seqs:
+        if isinstance(seq, str):
+            # seq = seq.split()
+            seq = word_tokenize(seq)
+        unigrams = Counter(seq)
+        bigrams = Counter(zip(seq, seq[1:]))
+        intra_dist1.append((len(unigrams)+1e-12) / (len(seq)+1e-5))
+        intra_dist2.append((len(bigrams)+1e-12) / (max(0, len(seq)-1)+1e-5))
+
+        unigrams_all.update(unigrams)
+        bigrams_all.update(bigrams)
+
+    # inter_dist1 = (len(unigrams_all)+1e-12) / (sum(unigrams_all.values())+1e-5)
+    # inter_dist2 = (len(bigrams_all)+1e-12) / (sum(bigrams_all.values())+1e-5)
+    intra_dist1 = np.average(intra_dist1)
+    intra_dist2 = np.average(intra_dist2)
+    # return intra_dist1, intra_dist2, inter_dist1, inter_dist2
+    return {'dist-1': round(intra_dist1, 4), 'dist-2': round(intra_dist2, 4)}
 
 
 def trim_batch(

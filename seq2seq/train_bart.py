@@ -8,7 +8,7 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '4'
     gpus = 1
 
     parser = argparse.ArgumentParser(description='data2text E2E training args.')
@@ -147,12 +147,12 @@ if __name__ == '__main__':
         if args.tuning_mode == 'prefixtune':
             norm_data_dir = ntpath.normpath(args.data_dir)
             restaurant = norm_data_dir.split("\\")[-1]
-            Model_FILE = restaurant + '/' + args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz)
+            Model_FILE = restaurant + '/' + args.tuning_mode + '_prelen=' + str(args.preseqlen) + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz * args.gradient_accumulation_steps)
             if not os.path.isdir(folder_name + restaurant):
                 os.mkdir(folder_name + restaurant)
 
         elif args.tuning_mode == 'finetune':
-            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz)
+            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz * args.gradient_accumulation_steps)
     else:
         Model_FILE = args.dir_name
 

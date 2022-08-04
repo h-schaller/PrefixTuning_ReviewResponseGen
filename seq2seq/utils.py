@@ -6,6 +6,7 @@ import math
 from nltk.tokenize import word_tokenize
 import os
 import pickle
+from sacrebleu.tokenizers.tokenizer_13a import Tokenizer13a
 import socket
 from logging import getLogger
 from pathlib import Path
@@ -30,6 +31,8 @@ try:
     FAIRSEQ_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     FAIRSEQ_AVAILABLE = False
+
+tokenize = Tokenizer13a()
 
 
 def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=-100):
@@ -88,7 +91,8 @@ def calculate_distinct(seqs):
     for seq in seqs:
         if isinstance(seq, str):
             # seq = seq.split()
-            seq = word_tokenize(seq)
+            # seq = word_tokenize(seq)
+            seq = tokenize(seq.strip()).split()
         unigrams = Counter(seq)
         bigrams = Counter(zip(seq, seq[1:]))
         intra_dist1.append((len(unigrams)+1e-12) / (len(seq)+1e-5))

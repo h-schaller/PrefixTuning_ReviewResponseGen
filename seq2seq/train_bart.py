@@ -22,9 +22,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--dir_name', type=str, default=None, help='')
     parser.add_argument('--notes', type=str, default=None, help='')
-    parser.add_argument('--lowdata_token', type=str, default='summarize', help='')
-    parser.add_argument('--use_lowdata_token', type=str, default='yes', help='')
-
 
     parser.add_argument('--parametrize_emb', type=str, default='MLP', help='')
     parser.add_argument('--adapter_design', type=int, default=1, help='')
@@ -39,11 +36,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_dropout', type=str, default='no', help='')
     parser.add_argument('--seed', type=int, default=101, help='') # old is 42
     parser.add_argument('--bsz', type=int, default=10, help='')
-    parser.add_argument('--use_big', type=str, default='no', help='')
     parser.add_argument('--epoch', type=int, default=5, help='')
-    parser.add_argument('--max_steps', type=int, default=400, help='')
-    parser.add_argument('--eval_steps', type=int, default=50, help='')
-    parser.add_argument('--warmup_steps', type=int, default=100, help='')
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help='')
     parser.add_argument('--learning_rate', type=float, default=5e-05, help='')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='')
@@ -58,6 +51,11 @@ if __name__ == '__main__':
     parser.add_argument('--prefix_model_path', type=str, default=None, help='')
     parser.add_argument('--finetune_model_path', type=str, default=None, help='')
     parser.add_argument('--checkpoint_path', default=None, help='')
+
+    parser.add_argument('--use_top_p_sampling', default=False, help='')
+    parser.add_argument('--top_p', default=1.0, type=float, help='')
+    parser.add_argument('--temperature', default=1.0, type=float, help='')
+    parser.add_argument("--eval_beams", type=int, default=None, required=False)
 
     args = parser.parse_args()
 
@@ -152,7 +150,11 @@ if __name__ == '__main__':
                 os.mkdir(folder_name + restaurant)
 
         elif args.tuning_mode == 'finetune':
-            Model_FILE = args.tuning_mode + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz * args.gradient_accumulation_steps)
+            norm_data_dir = ntpath.normpath(args.data_dir)
+            restaurant = norm_data_dir.split("\\")[-1]
+            Model_FILE = restaurant + '/' + args.tuning_mode + '_lr={}'.format(args.learning_rate) + '_bs={}'.format(args.bsz * args.gradient_accumulation_steps)
+            if not os.path.isdir(folder_name + restaurant):
+                os.mkdir(folder_name + restaurant)
     else:
         Model_FILE = args.dir_name
 
@@ -167,10 +169,10 @@ if __name__ == '__main__':
 
     app = "--optim_prefix {} --preseqlen {} --prefix_mode {} --format_mode {} " \
           "--gradient_accumulation_steps {} --learning_rate {} --weight_decay {} --seed {} " \
-          "--mid_dim {} --use_dropout {} --prefix_dropout {} ".\
+          "--mid_dim {} --use_dropout {} --prefix_dropout {} --eval_beams {} --use_top_p_sampling {} --top_p {} --temperature {} ".\
         format(args.optim_prefix, args.preseqlen, args.prefix_mode, args.format_mode,
                args.gradient_accumulation_steps, args.learning_rate, args.weight_decay, args.seed,
-               args.mid_dim, args.use_dropout, args.dropout)
+               args.mid_dim, args.use_dropout, args.dropout, args.eval_beams, args.use_top_p_sampling, args.top_p, args.temperature)
 
     if args.prefix_mode == 'embedding':
         app += ' --parametrize_emb {} '.format(args.parametrize_emb)

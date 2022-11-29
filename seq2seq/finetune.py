@@ -111,9 +111,15 @@ class PrefixSummarizationModule(PrefixTransformer):
             Seq2SeqDataset if hasattr(self.tokenizer, "prepare_seq2seq_batch") else LegacySeq2SeqDataset
         )
 
-        if self.hparams.eval_beams is None:
-            self.eval_beams = self.model.config.num_beams
-            self.hparams.eval_beams = self.eval_beams
+        if self.hparams.eval_beams is None or self.hparams.eval_beams == 'None':
+            if self.hparams.use_top_p_sampling == 'True':
+                self.eval_beams = 1
+                self.top_p = self.hparams.top_p
+                self.temperature = self.hparams.temperature
+                self.hparams.eval_beams = self.eval_beams
+            else:
+                self.eval_beams = self.model.config.num_beams
+                self.hparams.eval_beams = self.eval_beams
         else:
             self.eval_beams = self.hparams.eval_beams
         assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
@@ -135,9 +141,11 @@ class PrefixSummarizationModule(PrefixTransformer):
         self.eval_min_length = 11
         self.hparams.eval_min_length = 11
 
+        self.use_top_p_sampling = self.hparams.use_top_p_sampling
+
         logger.info('for deocding, eval_max_length={}, '
-                    'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length,
-                                                               self.eval_beams))
+                    'eval_min_length={}, eval_beams={}, use top_p sampling={}'.format(self.eval_max_length, self.eval_min_length,
+                                                               self.eval_beams, self.use_top_p_sampling))
 
     def freeze_embeds(self):
         """Freeze token embeddings and positional embeddings for bart, just token embeddings for t5."""
@@ -258,6 +266,7 @@ class PrefixSummarizationModule(PrefixTransformer):
                 **calculate_distinct(preds)}
 
     def _generative_step(self, batch: dict) -> dict:
+        torch.manual_seed(self.hparams.seed)
         t0 = time.time()
         # TODO(LISA)
         # write the prompt generation from self.model.
@@ -274,7 +283,11 @@ class PrefixSummarizationModule(PrefixTransformer):
             length_penalty=self.hparams.length_penalty,
             use_prefix=True,
             decoder_start_token_id=self.decoder_start_token_id,
-            num_beams=self.eval_beams,
+            do_sample=True if self.use_top_p_sampling=='True' else False,
+            top_p=self.top_p if self.use_top_p_sampling=='True' else None,
+            temperature=self.temperature if self.use_top_p_sampling=='True' else None,
+            top_k=0 if self.use_top_p_sampling=='True' else None,
+            num_beams=1 if self.use_top_p_sampling=='True' else self.eval_beams,
             min_length=self.eval_min_length,
             max_length=self.eval_max_length,
         )
@@ -400,7 +413,7 @@ class PrefixSummarizationModule(PrefixTransformer):
         parser.add_argument("--label_smoothing", type=float, default=0.0, required=False)
         parser.add_argument("--src_lang", type=str, default="", required=False)
         parser.add_argument("--tgt_lang", type=str, default="", required=False)
-        parser.add_argument("--eval_beams", type=int, default=None, required=False)
+        parser.add_argument("--eval_beams", default=None, required=False)
         parser.add_argument(
             "--val_metric", type=str, default=None, required=False, choices=["bleu", "rouge2", "loss", None]
         )
@@ -415,6 +428,9 @@ class PrefixSummarizationModule(PrefixTransformer):
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
         parser.add_argument('--checkpoint_path', default=None, help='')
+        parser.add_argument('--use_top_p_sampling', default=False, help='')
+        parser.add_argument('--top_p', default=1.0, type=float, help='top-p sampling parameter')
+        parser.add_argument('--temperature', default=1.0, type=float, help='')
         return parser
 
 
@@ -481,7 +497,12 @@ class SummarizationModule(BaseTransformer):
         self.dataset_class = (
             Seq2SeqDataset if hasattr(self.tokenizer, "prepare_seq2seq_batch") else LegacySeq2SeqDataset
         )
-        self.eval_beams = self.model.config.num_beams if self.hparams.eval_beams is None else self.hparams.eval_beams
+        self.eval_beams = self.model.config.num_beams if (self.hparams.eval_beams is None or self.hparams.eval_beams == 'None') else self.hparams.eval_beams
+        if self.hparams.use_top_p_sampling == 'True':
+            self.top_p = self.hparams.top_p
+            self.temperature = self.hparams.temperature
+            self.eval_beams = 1
+
         assert self.eval_beams >= 1, f"got self.eval_beams={self.eval_beams}. Need an integer > 1"
         if self.hparams.val_max_target_length is not None:
             self.eval_max_length = self.hparams.val_max_target_length
@@ -491,12 +512,14 @@ class SummarizationModule(BaseTransformer):
         self.eval_min_length = 11
         self.hparams.eval_min_length = 11
 
+        self.use_top_p_sampling = self.hparams.use_top_p_sampling
+
         self.hparams.eval_beams = self.eval_beams
         self.hparams.eval_max_gen_length = self.hparams.val_max_target_length
 
         logger.info('for deocding, eval_max_length={}, '
-                    'eval_min_length={}, eval_beams={}'.format(self.eval_max_length, self.eval_min_length,
-                                                               self.eval_beams))
+                    'eval_min_length={}, eval_beams={}, use top_p sampling={}'.format(self.eval_max_length, self.eval_min_length,
+                                                               self.eval_beams, self.use_top_p_sampling))
 
         self.val_metric = self.default_val_metric if self.hparams.val_metric is None else self.hparams.val_metric
         self.hparams.val_metric = self.val_metric
@@ -603,6 +626,7 @@ class SummarizationModule(BaseTransformer):
                 **calculate_distinct(preds)}
 
     def _generative_step(self, batch: dict) -> dict:
+        torch.manual_seed(self.hparams.seed)
         t0 = time.time()
 
         # parser.add_argument('--eval_max_gen_length', type=int, default=None, help='never generate more than n tokens')
@@ -612,7 +636,11 @@ class SummarizationModule(BaseTransformer):
             use_cache=True,
             length_penalty=self.hparams.length_penalty,
             decoder_start_token_id=self.decoder_start_token_id,
-            num_beams=self.eval_beams,
+            do_sample=True if self.use_top_p_sampling=='True' else False,
+            top_p=self.top_p if self.use_top_p_sampling=='True' else None,
+            temperature=self.temperature if self.use_top_p_sampling == 'True' else None,
+            top_k=0 if self.use_top_p_sampling=='True' else None,
+            num_beams=1 if self.use_top_p_sampling=='True' else self.eval_beams,
             max_length=self.eval_max_length,
         )
         gen_time = (time.time() - t0) / batch["input_ids"].shape[0]
@@ -735,7 +763,7 @@ class SummarizationModule(BaseTransformer):
         parser.add_argument("--label_smoothing", type=float, default=0.0, required=False)
         parser.add_argument("--src_lang", type=str, default="", required=False)
         parser.add_argument("--tgt_lang", type=str, default="", required=False)
-        parser.add_argument("--eval_beams", type=int, default=None, required=False)
+        parser.add_argument("--eval_beams", default=None, required=False)
         parser.add_argument(
             "--val_metric", type=str, default=None, required=False, choices=["bleu", "rouge2", "loss", None]
         )
@@ -750,6 +778,9 @@ class SummarizationModule(BaseTransformer):
             help="-1 means never early stop. early_stopping_patience is measured in validation checks, not epochs. So val_check_interval will effect it.",
         )
         parser.add_argument('--checkpoint_path', default=None, help='')
+        parser.add_argument('--use_top_p_sampling', default=False, help='')
+        parser.add_argument('--top_p', default=1.0, type=float, help='top-p sampling parameter')
+        parser.add_argument('--temperature', default=1.0, type=float, help='')
         return parser
 
 
@@ -844,13 +875,13 @@ def eval(args, model=None) -> SummarizationModule:
     out_1 = args.output_dir
     if not os.path.isdir(os.path.join(out_1, 'test_results')):
         os.mkdir(os.path.join(out_1, 'test_results'))
-    out_path = os.path.join(out_1, 'test_results', 'test_generations_beam_{}_len-pen_{}_{}.txt'.format(int(model.eval_beams), int(args.length_penalty), args.data_dir.split('/')[-1]))
+    out_path = os.path.join(out_1, 'test_results', 'test_generations_beam_{}_len-pen_{}_top-p_{}_temp={}_seed={}_{}.txt'.format(int(model.eval_beams), int(args.length_penalty), args.top_p, int(args.temperature), int(args.seed), args.data_dir.split('/')[-1]))
     logger.info('writing the test results to {}'.format(out_path))
     with open(out_path, 'w', encoding='utf-8') as f:
         for preds in result['preds']:
             print(preds, file=f)
 
-    out_path_metrics = os.path.join(out_1, 'test_results', 'test_metrics_{}.json'.format(args.data_dir.split('/')[-1]))
+    out_path_metrics = os.path.join(out_1, 'test_results', 'test_metrics_beam_{}_len-pen_{}_top-p_{}_temp={}_seed={}_{}.txt'.format(int(model.eval_beams), int(args.length_penalty), args.top_p, int(args.temperature), int(args.seed), args.data_dir.split('/')[-1]))
     with open(out_path_metrics, 'w') as f:
         for k, v in result.items():
             if k == 'log':
